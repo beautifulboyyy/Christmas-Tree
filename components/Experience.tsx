@@ -1,208 +1,150 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Suspense } from 'react';
 import * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Stars, Environment, Sparkles } from '@react-three/drei';
-import Photo from './Photo';
+import { OrbitControls, Stars, Environment, Float, Sparkles, PerspectiveCamera } from '@react-three/drei';
+import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
+import PhotoFrame from './PhotoFrame';
 import Decoration from './Decorations';
-import { generateTreePositions, getRandomGalaxyPosition, randomRange } from '../utils/math';
+import { getVolumetricTreePos, getGalaxyPos } from '../utils/math';
 import { PhotoData, DecorationData } from '../types';
 import gsap from 'gsap';
 
-// --- CONFIGURATION ---
-// Replace these URLs with your local paths if needed
-const PHOTO_URLS = [
-  "https://picsum.photos/id/1015/300/300",
-  "https://picsum.photos/id/1018/300/300",
-  "https://picsum.photos/id/1025/300/300",
-  "https://picsum.photos/id/1036/300/300",
-  "https://picsum.photos/id/1040/300/300",
-  "https://picsum.photos/id/1050/300/300",
-  "https://picsum.photos/id/1060/300/300",
-  "https://picsum.photos/id/1070/300/300",
-  "https://picsum.photos/id/1080/300/300",
-  "https://picsum.photos/id/110/300/300",
-  "https://picsum.photos/id/120/300/300",
-  "https://picsum.photos/id/130/300/300",
-];
+// Use seed-based URLs to ensure availability and avoid 404 errors on specific IDs
+const PHOTO_URLS = Array.from({ length: 15 }).map((_, i) => `https://picsum.photos/seed/christmas${i}/600/800`);
 
-const TREE_HEIGHT = 12;
-const TREE_RADIUS = 3.5;
-const DECORATION_COUNT = 40;
+const TREE_HEIGHT = 14;
+const TREE_RADIUS = 5;
+const DECO_COUNT = 350; // High Density
 
-const ExperienceContent: React.FC = () => {
+const Scene = () => {
   const [isExploded, setIsExploded] = useState(false);
-  const [focusedPhotoId, setFocusedPhotoId] = useState<string | null>(null);
-
-  // Generate Data for Photos
-  const photosData = useMemo<PhotoData[]>(() => {
-    const spiralPos = generateTreePositions(PHOTO_URLS.length, TREE_RADIUS, TREE_HEIGHT);
-    return PHOTO_URLS.map((url, i) => ({
-      id: `photo-${i}`,
-      url: url,
-      treePos: spiralPos[i].pos,
-      treeRot: spiralPos[i].rot,
-      galaxyPos: getRandomGalaxyPosition(10),
-      galaxyRot: new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, 0)
-    }));
-  }, []);
-
-  // Generate Data for Decorations
-  const decorationsData = useMemo<DecorationData[]>(() => {
-    // Offset spiral for decorations so they don't overlap perfectly with photos
-    // We add a random start index to mix them in
-    const spiralPos = generateTreePositions(DECORATION_COUNT, TREE_RADIUS * 1.2, TREE_HEIGHT);
-    
-    return Array.from({ length: DECORATION_COUNT }).map((_, i) => ({
-      id: `deco-${i}`,
-      type: Math.random() > 0.5 ? 'sphere' : 'box',
-      color: ['#ff0000', '#d4af37', '#silver', '#00ff00'][Math.floor(Math.random() * 4)],
-      treePos: spiralPos[i].pos,
-      treeRot: spiralPos[i].rot,
-      galaxyPos: getRandomGalaxyPosition(15),
-      galaxyRot: new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, 0)
-    }));
-  }, []);
-
-  // Top Star Ref
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   const starRef = useRef<THREE.Group>(null);
 
-  // Animate Top Star
-  useEffect(() => {
-    if(!starRef.current) return;
-    const targetY = isExploded ? 10 : (TREE_HEIGHT / 2) + 0.5;
-    const targetScale = isExploded ? 0 : 1; // Hide star in galaxy mode or explode it away
-
-    gsap.to(starRef.current.position, {
-        y: targetY,
-        x: isExploded ? 0 : 0,
-        z: isExploded ? 0 : 0,
-        duration: 2,
-        ease: "power2.inOut"
+  // Generate Data
+  const photos = useMemo<PhotoData[]>(() => {
+    return PHOTO_URLS.map((url, i) => {
+      const treeData = getVolumetricTreePos(TREE_HEIGHT, TREE_RADIUS);
+      return {
+        id: `p-${i}`,
+        url,
+        treePos: treeData,
+        treeRot: new THREE.Euler(0, Math.random() * Math.PI, Math.random() * 0.5),
+        galaxyPos: getGalaxyPos(12),
+        galaxyRot: new THREE.Euler(0, 0, 0),
+      };
     });
-    
-    // Spin the star if exploded, stable if tree
-    if(isExploded) {
-       gsap.to(starRef.current.scale, { x: 0, y: 0, z: 0, duration: 1 });
-    } else {
-       gsap.to(starRef.current.scale, { x: 1, y: 1, z: 1, duration: 1, delay: 1 });
-    }
+  }, []);
 
+  const decos = useMemo<DecorationData[]>(() => {
+    const colors = ['#D4AF37', '#B22222', '#C0C0C0', '#FFD700']; // Gold, Crimson, Silver, Bright Gold
+    return Array.from({ length: DECO_COUNT }).map((_, i) => ({
+      id: `d-${i}`,
+      type: Math.random() > 0.3 ? 'sphere' : 'box',
+      color: colors[Math.floor(Math.random() * colors.length)],
+      treePos: getVolumetricTreePos(TREE_HEIGHT, TREE_RADIUS),
+      treeRot: new THREE.Euler(Math.random() * Math.PI, 0, 0),
+      galaxyPos: getGalaxyPos(18),
+      galaxyRot: new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, 0),
+    }));
+  }, []);
+
+  // Star Animation
+  useEffect(() => {
+    if (!starRef.current) return;
+    gsap.to(starRef.current.position, {
+      y: isExploded ? 25 : TREE_HEIGHT / 2 + 0.5,
+      duration: 2,
+      ease: "power2.inOut"
+    });
+    gsap.to(starRef.current.scale, {
+      x: isExploded ? 0 : 1.5,
+      y: isExploded ? 0 : 1.5,
+      z: isExploded ? 0 : 1.5,
+      duration: 1
+    });
   }, [isExploded]);
-
-
-  // Handlers
-  const handleTreeDoubleClick = (e: any) => {
-    e.stopPropagation();
-    if (!isExploded) {
-      setIsExploded(true);
-    }
-  };
-
-  const handleBackgroundDoubleClick = () => {
-    if (isExploded) {
-      setFocusedPhotoId(null); // Clear focus
-      setIsExploded(false); // Reset to tree
-    }
-  };
-
-  const handlePhotoSelect = (id: string, e: any) => {
-    // Only allow selection in Galaxy mode
-    if (isExploded) {
-      if (focusedPhotoId === id) {
-        setFocusedPhotoId(null); // Unfocus
-      } else {
-        setFocusedPhotoId(id); // Focus
-      }
-    }
-  };
 
   return (
     <>
-      <color attach="background" args={['#050505']} />
+      <PerspectiveCamera makeDefault position={[0, 0, 20]} fov={45} />
+      <OrbitControls 
+        enablePan={false} 
+        enableZoom={isExploded}
+        maxPolarAngle={Math.PI / 1.8} 
+        autoRotate={!isExploded && !focusedId} 
+        autoRotateSpeed={0.4}
+      />
       
-      {/* Lighting */}
-      <ambientLight intensity={0.5} />
-      <pointLight position={[10, 10, 10]} intensity={1} />
-      <pointLight position={[-10, 10, -10]} intensity={0.5} color="blue" />
+      {/* Background Lights & Atmosphere */}
+      <color attach="background" args={['#020205']} />
+      <Stars radius={100} depth={50} count={7000} factor={4} saturation={0} fade speed={1} />
+      <Sparkles count={200} scale={20} size={2} speed={0.3} color="#FFD700" />
+      <Environment preset="studio" />
+      <ambientLight intensity={0.4} />
+      <pointLight position={[10, 10, 10]} intensity={1.5} color="#fff" />
 
-      {/* Background / Environment */}
-      <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
-      <Sparkles count={100} scale={12} size={4} speed={0.4} opacity={0.5} color="#fff3b0" />
-      
-      {/* Interaction Plane for Background Reset */}
-      {/* Only visible to raycaster, acts as background trigger */}
+      {/* Explosion Trigger */}
       <mesh 
         visible={false} 
-        onDoubleClick={handleBackgroundDoubleClick}
-        position={[0, 0, 0]}
+        onDoubleClick={() => { setIsExploded(!isExploded); setFocusedId(null); }}
       >
         <sphereGeometry args={[50, 16, 16]} />
         <meshBasicMaterial side={THREE.BackSide} />
       </mesh>
 
-      {/* TREE GROUP */}
-      <group 
-        onDoubleClick={handleTreeDoubleClick}
-        rotation={[0, 0, 0]} // Initial rotation
-      >
+      <group>
         {/* Top Star */}
-        <group ref={starRef} position={[0, TREE_HEIGHT / 2 + 0.5, 0]}>
-           <mesh>
-              <dodecahedronGeometry args={[0.5, 0]} />
-              <meshStandardMaterial color="#ffd700" emissive="#ffd700" emissiveIntensity={2} toneMapped={false} />
-           </mesh>
-           <pointLight intensity={2} distance={5} color="#ffd700" />
-        </group>
+        <Float speed={4} rotationIntensity={0.5} floatIntensity={1}>
+          <group ref={starRef}>
+            <mesh>
+              <dodecahedronGeometry args={[0.8, 0]} />
+              <meshStandardMaterial color="#FFD700" emissive="#FFD700" emissiveIntensity={5} toneMapped={false} />
+            </mesh>
+            <pointLight intensity={3} color="#FFD700" distance={10} />
+          </group>
+        </Float>
 
-        {/* Photos */}
-        {photosData.map((data) => (
-          <Photo 
-            key={data.id} 
-            data={data} 
-            isExploded={isExploded}
-            isFocused={focusedPhotoId === data.id}
-            onSelect={handlePhotoSelect}
-          />
-        ))}
+        {/* Dense Ornaments */}
+        {decos.map(d => <Decoration key={d.id} data={d} isExploded={isExploded} />)}
 
-        {/* Decorations */}
-        {decorationsData.map((data) => (
-          <Decoration 
-            key={data.id} 
-            data={data} 
-            isExploded={isExploded}
+        {/* Polaroids */}
+        {photos.map(p => (
+          <PhotoFrame 
+            key={p.id} 
+            data={p} 
+            isExploded={isExploded} 
+            isFocused={focusedId === p.id} 
+            onSelect={(id) => setFocusedId(focusedId === id ? null : id)} 
           />
         ))}
       </group>
 
-      <OrbitControls 
-        enablePan={false}
-        enableZoom={!isExploded} // Disable zoom in galaxy mode to prevent clipping through items easily
-        minPolarAngle={Math.PI / 3} // Prevent looking from top down (too much)
-        maxPolarAngle={Math.PI / 1.8} // Prevent looking from under
-        autoRotate={!isExploded && !focusedPhotoId} // Rotate when in tree mode
-        autoRotateSpeed={0.5}
-      />
+      {/* Cinematic Effects */}
+      <EffectComposer disableNormalPass>
+        <Bloom 
+          luminanceThreshold={0.8} 
+          intensity={1.5} 
+          levels={9} 
+          mipmapBlur 
+        />
+        <Vignette eskil={false} offset={0.1} darkness={1.1} />
+      </EffectComposer>
     </>
   );
 };
 
 const Experience: React.FC = () => {
   return (
-    <div className="w-full h-screen bg-black">
-      <Canvas
-        camera={{ position: [0, 2, 14], fov: 45 }}
-        dpr={[1, 2]} // Quality scaling
-      >
-         <React.Suspense fallback={null}>
-            <ExperienceContent />
-         </React.Suspense>
+    <div className="w-full h-screen">
+      <Canvas gl={{ antialias: false, stencil: false, depth: true }} dpr={[1, 2]}>
+        <Suspense fallback={null}>
+          <Scene />
+        </Suspense>
       </Canvas>
-      
-      {/* Simple Instruction Overlay */}
-      <div className="absolute bottom-10 left-0 w-full text-center pointer-events-none text-white/50 text-sm font-light select-none">
-        <p>Double Click Tree to Explode • Double Click Void to Reset</p>
-        <p className="text-xs mt-1">Click photos in Galaxy mode to focus</p>
+      <div className="absolute top-8 left-0 w-full text-center pointer-events-none select-none">
+        <h1 className="text-white text-3xl font-serif tracking-widest opacity-80 uppercase">The Eternal Gallery</h1>
+        <p className="text-gold-400 text-xs mt-2 text-[#D4AF37] tracking-[0.3em]">DOUBLE CLICK TO REVEAL MEMORIES</p>
       </div>
     </div>
   );

@@ -3,12 +3,7 @@ import * as THREE from 'three';
 import gsap from 'gsap';
 import { DecorationData } from '../types';
 
-interface DecorationsProps {
-  data: DecorationData;
-  isExploded: boolean;
-}
-
-const Decoration: React.FC<DecorationsProps> = ({ data, isExploded }) => {
+const Decoration: React.FC<{ data: DecorationData; isExploded: boolean }> = ({ data, isExploded }) => {
   const meshRef = useRef<THREE.Mesh>(null);
 
   useEffect(() => {
@@ -21,34 +16,34 @@ const Decoration: React.FC<DecorationsProps> = ({ data, isExploded }) => {
       x: targetPos.x,
       y: targetPos.y,
       z: targetPos.z,
-      duration: 1.8,
-      ease: "power2.inOut",
-      delay: Math.random() * 0.2 // Random delay for organic feel
+      duration: 1.5,
+      ease: "back.out(1.2)",
+      delay: Math.random() * 0.3
     });
     
     gsap.to(meshRef.current.rotation, {
       x: targetRot.x,
       y: targetRot.y,
       z: targetRot.z,
-      duration: 1.8,
+      duration: 1.5,
       ease: "power2.inOut"
     });
-
   }, [isExploded, data]);
 
   return (
-    <mesh ref={meshRef} position={data.treePos} rotation={data.treeRot}>
+    <mesh ref={meshRef}>
       {data.type === 'sphere' ? (
-        <sphereGeometry args={[0.2, 16, 16]} />
+        <sphereGeometry args={[0.18, 24, 24]} />
       ) : (
-        <boxGeometry args={[0.3, 0.3, 0.3]} />
+        <octahedronGeometry args={[0.2, 0]} />
       )}
       <meshStandardMaterial 
         color={data.color} 
-        metalness={0.6} 
-        roughness={0.2} 
+        metalness={0.9} 
+        roughness={0.1} 
+        envMapIntensity={2}
         emissive={data.color}
-        emissiveIntensity={0.2}
+        emissiveIntensity={isExploded ? 0.1 : 0.4}
       />
     </mesh>
   );
