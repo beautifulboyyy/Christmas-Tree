@@ -9,12 +9,50 @@ import { getVolumetricTreePos, getGalaxyPos } from '../utils/math';
 import { PhotoData, DecorationData } from '../types';
 import gsap from 'gsap';
 
-// Use seed-based URLs to ensure availability and avoid 404 errors on specific IDs
+// Use seed-based URLs
 const PHOTO_URLS = Array.from({ length: 15 }).map((_, i) => `https://picsum.photos/seed/christmas${i}/600/800`);
 
 const TREE_HEIGHT = 14;
-const TREE_RADIUS = 5;
-const DECO_COUNT = 350; // High Density
+const TREE_RADIUS = 5.5; // Slightly wider to accommodate larger ornaments
+const DECO_COUNT = 800; // Increased density significantly
+
+const StarGeometry = () => {
+  const shape = useMemo(() => {
+    const s = new THREE.Shape();
+    const points = 5;
+    const outerRadius = 0.8;
+    const innerRadius = 0.35;
+    
+    // Rotate -PI/2 to make the top point point upwards
+    const offsetAngle = -Math.PI / 2;
+
+    for (let i = 0; i < points * 2; i++) {
+      const angle = (i * Math.PI) / points + offsetAngle;
+      const radius = i % 2 === 0 ? outerRadius : innerRadius;
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
+      if (i === 0) s.moveTo(x, y);
+      else s.lineTo(x, y);
+    }
+    s.closePath();
+    return s;
+  }, []);
+
+  return (
+    <extrudeGeometry 
+      args={[
+        shape, 
+        { 
+          depth: 0.2, 
+          bevelEnabled: true, 
+          bevelThickness: 0.1, 
+          bevelSize: 0.05, 
+          bevelSegments: 2 
+        }
+      ]} 
+    />
+  );
+};
 
 const Scene = () => {
   const [isExploded, setIsExploded] = useState(false);
@@ -44,7 +82,7 @@ const Scene = () => {
       color: colors[Math.floor(Math.random() * colors.length)],
       treePos: getVolumetricTreePos(TREE_HEIGHT, TREE_RADIUS),
       treeRot: new THREE.Euler(Math.random() * Math.PI, 0, 0),
-      galaxyPos: getGalaxyPos(18),
+      galaxyPos: getGalaxyPos(20),
       galaxyRot: new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, 0),
     }));
   }, []);
@@ -53,7 +91,7 @@ const Scene = () => {
   useEffect(() => {
     if (!starRef.current) return;
     gsap.to(starRef.current.position, {
-      y: isExploded ? 25 : TREE_HEIGHT / 2 + 0.5,
+      y: isExploded ? 25 : TREE_HEIGHT / 2 + 1,
       duration: 2,
       ease: "power2.inOut"
     });
@@ -67,22 +105,23 @@ const Scene = () => {
 
   return (
     <>
-      <PerspectiveCamera makeDefault position={[0, 0, 20]} fov={45} />
+      <PerspectiveCamera makeDefault position={[0, 0, 24]} fov={45} />
       <OrbitControls 
         enablePan={false} 
         enableZoom={isExploded}
         maxPolarAngle={Math.PI / 1.8} 
         autoRotate={!isExploded && !focusedId} 
-        autoRotateSpeed={0.4}
+        autoRotateSpeed={0.5}
       />
       
-      {/* Background Lights & Atmosphere */}
-      <color attach="background" args={['#020205']} />
-      <Stars radius={100} depth={50} count={7000} factor={4} saturation={0} fade speed={1} />
-      <Sparkles count={200} scale={20} size={2} speed={0.3} color="#FFD700" />
-      <Environment preset="studio" />
-      <ambientLight intensity={0.4} />
-      <pointLight position={[10, 10, 10]} intensity={1.5} color="#fff" />
+      {/* Lighting: Dark atmosphere, light primarily from Star */}
+      <color attach="background" args={['#010101']} />
+      <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+      <Sparkles count={300} scale={20} size={3} speed={0.3} color="#FFD700" />
+      
+      {/* Dim environment to let the Star shine */}
+      <Environment preset="night" environmentIntensity={0.2} /> 
+      <ambientLight intensity={0.1} />
 
       {/* Explosion Trigger */}
       <mesh 
@@ -95,13 +134,22 @@ const Scene = () => {
 
       <group>
         {/* Top Star */}
-        <Float speed={4} rotationIntensity={0.5} floatIntensity={1}>
+        <Float speed={2} rotationIntensity={0.2} floatIntensity={0.5}>
           <group ref={starRef}>
             <mesh>
-              <dodecahedronGeometry args={[0.8, 0]} />
-              <meshStandardMaterial color="#FFD700" emissive="#FFD700" emissiveIntensity={5} toneMapped={false} />
+              <StarGeometry />
+              <meshStandardMaterial 
+                color="#FFD700" 
+                emissive="#FFD700" 
+                emissiveIntensity={4} 
+                toneMapped={false} 
+                metalness={1}
+                roughness={0}
+              />
             </mesh>
-            <pointLight intensity={3} color="#FFD700" distance={10} />
+            {/* The main light source coming from the star */}
+            <pointLight intensity={25} color="#FFD700" distance={40} decay={2} position={[0, 0, 1]} />
+            <pointLight intensity={10} color="#FFFAEE" distance={20} decay={2} position={[0, 0, -1]} />
           </group>
         </Float>
 
@@ -121,10 +169,10 @@ const Scene = () => {
       </group>
 
       {/* Cinematic Effects */}
-      <EffectComposer disableNormalPass>
+      <EffectComposer enableNormalPass={false}>
         <Bloom 
-          luminanceThreshold={0.8} 
-          intensity={1.5} 
+          luminanceThreshold={1.2} 
+          intensity={0.8} 
           levels={9} 
           mipmapBlur 
         />
